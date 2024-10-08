@@ -1,0 +1,8 @@
+*.jpg
+*.ply
+/images
+/build
+/log
+/rosbag*
+/test
+
