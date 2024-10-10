@@ -16,7 +16,7 @@ class MinimalSubscriber(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         self.subscription = self.create_subscription(
             Image,
-            '/camera/camera/infra1/image_rect_raw',
+            '/camera/camera/color/image_raw',
             self.listener_callback,
             1)
         self.img_converter = CvBridge()
