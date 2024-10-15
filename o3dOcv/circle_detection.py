@@ -17,34 +17,53 @@ from skimage.feature import canny
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
 
+
+# attributes is a dict of variable names and values.
+# It will automatically generate a get_'name of variable' function, which the Objective function must implement to work anyway
+# const_functions is the same but for function that need to be implemented but will always return the same value anyway
+def add_attributes(attributes, const_functions):
+    def class_decorator(cls):
+        ''' Create getter and setter methods for each of the given attributes -answered Jan 9, 2020 at 7:33 by martineau on stack overflow'''
+        for attr_name, inital_value in attributes.items(): # attributes that need a getter function (get_ + variable name)
+            def getter(self, name=attr_name):
+                return getattr(self, name)
+            setattr(cls, attr_name, inital_value)
+            setattr(cls, 'get_' + attr_name, getter)
+
+        for func_name, result in const_functions.items(): # functions that always return the same value
+            def func(self, name=func_name):
+                return result
+            setattr(cls, func_name, func)
+        return cls
+    return class_decorator
+
+@add_attributes(
+    attributes={'random_seed': random.randint(0, 10000), # optional random seed for reproducible results
+                  'mpai': 2, # maximum pitch adjustment index (also defined in pitch_adjustment()) - used for discrete variables only
+                  'par': 0.5, # pitch adjusting rate
+                  'max_imp': 5000,  # maximum number of improvisations
+                  'hms': 100,  # harmony memory size
+                  'hmcr': 0.75,  # harmony memory considering rate
+                  'canny_low_threshold_quantile': 0.6, # between 0 and 1, e.g 0.6'th quantile
+                  'canny_high_threshold_quantile': 0.9,
+                  'num_parameters': 2 # size of the vector argument to the fitness function
+                  },
+    const_functions={'is_discrete': True,
+                    'is_variable': True,
+                    'use_random_seed': True,
+                    'maximize': True,
+                    })
 class ObjectiveFunc(ObjectiveFunctionInterface):
     def __init__(self, image):
         self._image = ski.color.rgb2gray(image)
-        self._edge_img = canny(self._image, mode='reflect', sigma=3, use_quantiles=True, low_threshold=0.1, high_threshold=0.2)
+        self._edge_img = canny(self._image, mode='reflect', sigma=3, use_quantiles=True, low_threshold=self.canny_low_threshold_quantile, high_threshold=self.canny_high_threshold_quantile)
         self._sorted_edges = get_edges(self._edge_img)
-        self._upper_bounds = [0, self._sorted_edges.shape[0]-1]
-        self._lower_bounds = [0, self._sorted_edges.shape[0]-1]
-        self._variable = [True, True]
         self._discrete_values = [[x for x in range(0, self._sorted_edges.shape[0])], [x for x in range(0, self._sorted_edges.shape[0])]]
 
-        # define all input parameters
-        self._maximize = True  # do we maximize or minimize?
-        self._max_imp = 5000  # maximum number of improvisations
-        self._hms = 100  # harmony memory size
-        self._hmcr = 0.75  # harmony memory considering rate
-        self._par = 0.5  # pitch adjusting rate
-        self._mpai = 2  # maximum pitch adjustment index (also defined in pitch_adjustment()) - used for discrete variables only
-        self._random_seed = 8675309  # optional random seed for reproducible results
-
     def solution_vec_to_points(self, x):
-        idx1 = x[0]
-        idx3 = x[1]
+        idx1, idx3 = x
         idx2 = (int)((idx1 + idx3) / 2)
-
-        p1 = self._sorted_edges[idx1, 0:2]
-        p2 = self._sorted_edges[idx2, 0:2]
-        p3 = self._sorted_edges[idx3, 0:2]
-        
+        p1, p2, p3 = self._sorted_edges[(idx1, idx2, idx3), 0:2]
         return (p1, p2, p3)
 
     def get_fitness(self, vector):
@@ -58,16 +77,13 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         coords = ski.draw.circle_perimeter(xc, yc, R, shape=self._edge_img.shape)
         inliers = np.sum(self._edge_img[coords])
         circumference = 2*np.pi*R
-        fitness = inliers / np.sqrt(circumference)
-        #obj_func.visualize_circle(p1, p2, p3, "fitness" + str(np.sum(self._edge_img[coords])))
+        fitness = inliers / np.float_power(circumference, 1/2)
         return fitness
 
     def get_value(self, i, j=None):
-        if self.is_discrete(i):
-            if j:
-                return self._discrete_values[i][j]
-            return self._discrete_values[i][random.randint(0, len(self._discrete_values[i]) - 1)]
-        return random.uniform(self._lower_bounds[i], self._upper_bounds[i])
+        if j:
+            return self._discrete_values[i][j]
+        return self._discrete_values[i][random.randint(0, len(self._discrete_values[i]) - 1)]
 
     @staticmethod
     def binary_search(a, x):
@@ -86,52 +102,13 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         return ObjectiveFunc.binary_search(self._discrete_values[i], v)
 
     def get_lower_bound(self, i):
-        return self._lower_bounds[i]
+        return 0
 
     def get_upper_bound(self, i):
-        return self._upper_bounds[i]
-
-    def is_variable(self, i):
-        return self._variable[i]
-
-    def is_discrete(self, i):
-        # all variables are continuous
-        return True
+        return self._sorted_edges.shape[0]-1
     
     def get_num_discrete_values(self, i):
-        if self.is_discrete(i):
-            return len(self._discrete_values[i])
-        return float('+inf')
-
-    def get_num_parameters(self):
-        return len(self._lower_bounds)
-
-    def use_random_seed(self):
-        return True
-    
-    def get_random_seed(self):
-        return self._random_seed
-
-    def get_max_imp(self):
-        return self._max_imp
-
-    def get_hmcr(self):
-        return self._hmcr
-
-    def get_par(self):
-        return self._par
-
-    def get_hms(self):
-        return self._hms
-
-    def get_mpai(self):
-        return self._mpai
-
-    def get_mpap(self):
-        return self._mpap
-
-    def maximize(self):
-        return self._maximize
+        return len(self._discrete_values[i])
     
     @staticmethod
     def fit_circle(p1, p2, p3):
@@ -139,14 +116,14 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         B = (p1[0]**2 + p1[1]**2)*(p3[1]-p2[1]) + (p2[0]**2 + p2[1]**2)*(p1[1]-p3[1]) + (p3[0]**2 + p3[1]**2)*(p2[1]-p1[1])
         C = (p1[0]**2 + p1[1]**2)*(p2[0]-p3[0]) + (p2[0]**2 + p2[1]**2)*(p3[0]-p1[0]) + (p3[0]**2 + p3[1]**2)*(p1[0]-p2[0])
         D = (p1[0]**2 + p1[1]**2)*(p3[0]*p2[1] - p2[0]*p3[1]) + (p2[0]**2 + p2[1]**2)*(p1[0]*p3[1] - p3[0]*p1[1]) + (p3[0]**2 + p3[1]**2)*(p2[0]*p1[1] - p1[0]*p2[1])
-        if A == 0.0:
+        if A == 0.0: # points are in a line, and circle is infinitely large
             return None
         xc = np.round(-B/(2*A)).astype(int)
         yc = np.round(-C/(2*A)).astype(int)
         R = np.round(np.sqrt((B**2 + C**2 - 4*A*D)/(4*(A**2)))).astype(int)
         return (xc, yc, R)
     
-    def visualize_circle(self, p1, p2, p3, title=None):
+    def get_image(self, p1, p2, p3, title=None):
         img = ski.util.img_as_float(self._edge_img)
         img = ski.color.gray2rgb(img)
         xc, yc, R = ObjectiveFunc.fit_circle(p1, p2, p3)
@@ -154,11 +131,7 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         img[ski.draw.disk((p1[0], p1[1]), 5, shape=img.shape)] = [0, 255, 0]
         img[ski.draw.disk((p2[0], p2[1]), 5, shape=img.shape)] = [0, 255, 0]
         img[ski.draw.disk((p3[0], p3[1]), 5, shape=img.shape)] = [0, 255, 0]
-        f, ax = plt.subplots(1, 2)
-        ax[0].imshow(self._image)
-        ax[1].imshow(img)    
-        plt.axis('off')
-        plt.show()
+        return img
     
 def get_edges(edges_img):
     labeled_image, count = ski.measure.label(edges_img, return_num=True)
@@ -173,24 +146,25 @@ def get_edges(edges_img):
         edges = np.block([[edges], [x[:, None], y[:, None], ribb_min_lim, ribb_max_lim]])
     return edges
 
-def plotImage(image, title):
-    if(len(image.shape) == 2):
-        plt.imshow(image, cmap='gray')
-    else:
-        plt.imshow(image)
-    plt.title(title)
-    plt.axis('off')
-    plt.waitforbuttonpress()
-    plt.close()
-
-for i in range(1, 1635, 100):
+n_imgs = 6
+for idx, i in enumerate(np.random.randint(1, 1635, size=(n_imgs), dtype=int)):
     image = ski.io.imread('./images/image' + str(i) + '.jpg')
     #image = ski.io.imread('circle_test.jpg')
     obj_func = ObjectiveFunc(image)
-    num_processes = 1
-    num_iterations = 1
+    num_processes = cpu_count()
+    num_iterations = num_processes
     results = harmony_search(obj_func, num_processes, num_iterations)
     print('Elapsed time: {}\nBest harmony: {}\nBest fitness: {}\nHarmony memories:'.format(results.elapsed_time, results.best_harmony, results.best_fitness))
 
     p1, p2, p3 = obj_func.solution_vec_to_points(results.best_harmony)
-    obj_func.visualize_circle(p1, p2, p3)
+    circle = obj_func.get_image(p1, p2, p3)
+    plt.subplot(2, n_imgs, idx+1)
+    plt.imshow(image)
+    plt.axis('off')
+    plt.subplot(2, n_imgs, idx+n_imgs+1)
+    plt.imshow(circle)
+    plt.axis('off')
+
+plt.tight_layout(pad=0.1)
+plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
+plt.show()
