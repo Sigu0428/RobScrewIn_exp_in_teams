@@ -19,8 +19,8 @@ from skimage.util import img_as_ubyte
 
 class ObjectiveFunc(ObjectiveFunctionInterface):
     def __init__(self, image):
-        image = ski.color.rgb2gray(image)
-        self._edge_img = canny(image, mode='reflect', sigma=3)
+        self._image = ski.color.rgb2gray(image)
+        self._edge_img = canny(self._image, mode='reflect', sigma=3, use_quantiles=True, low_threshold=0.1, high_threshold=0.2)
         self._sorted_edges = get_edges(self._edge_img)
         self._upper_bounds = [0, self._sorted_edges.shape[0]-1]
         self._lower_bounds = [0, self._sorted_edges.shape[0]-1]
@@ -33,7 +33,6 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         self._hms = 100  # harmony memory size
         self._hmcr = 0.75  # harmony memory considering rate
         self._par = 0.5  # pitch adjusting rate
-        self._mpap = 0.25  # maximum pitch adjustment proportion (new parameter defined in pitch_adjustment()) - used for continuous variables only
         self._mpai = 2  # maximum pitch adjustment index (also defined in pitch_adjustment()) - used for discrete variables only
         self._random_seed = 8675309  # optional random seed for reproducible results
 
@@ -57,8 +56,11 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         else:
             xc, yc, R = fit
         coords = ski.draw.circle_perimeter(xc, yc, R, shape=self._edge_img.shape)
-        obj_func.visualize_circle(p1, p2, p3, "fitness" + str(np.sum(self._edge_img[coords])))
-        return np.sum(self._edge_img[coords])
+        inliers = np.sum(self._edge_img[coords])
+        circumference = 2*np.pi*R
+        fitness = inliers / np.sqrt(circumference)
+        #obj_func.visualize_circle(p1, p2, p3, "fitness" + str(np.sum(self._edge_img[coords])))
+        return fitness
 
     def get_value(self, i, j=None):
         if self.is_discrete(i):
@@ -152,10 +154,11 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         img[ski.draw.disk((p1[0], p1[1]), 5, shape=img.shape)] = [0, 255, 0]
         img[ski.draw.disk((p2[0], p2[1]), 5, shape=img.shape)] = [0, 255, 0]
         img[ski.draw.disk((p3[0], p3[1]), 5, shape=img.shape)] = [0, 255, 0]
-        if title is not None:
-            plotImage(img, title)
-        else:
-            plotImage(img, "circle")
+        f, ax = plt.subplots(1, 2)
+        ax[0].imshow(self._image)
+        ax[1].imshow(img)    
+        plt.axis('off')
+        plt.show()
     
 def get_edges(edges_img):
     labeled_image, count = ski.measure.label(edges_img, return_num=True)
@@ -177,16 +180,17 @@ def plotImage(image, title):
         plt.imshow(image)
     plt.title(title)
     plt.axis('off')
-    plt.show()
     plt.waitforbuttonpress()
     plt.close()
 
-image = ski.io.imread('./images/image18.jpg')
-obj_func = ObjectiveFunc(image)
-num_processes = cpu_count()
-num_iterations = num_processes
-results = harmony_search(obj_func, num_processes, num_iterations)
-print('Elapsed time: {}\nBest harmony: {}\nBest fitness: {}\nHarmony memories:'.format(results.elapsed_time, results.best_harmony, results.best_fitness))
+for i in range(1, 1635, 100):
+    image = ski.io.imread('./images/image' + str(i) + '.jpg')
+    #image = ski.io.imread('circle_test.jpg')
+    obj_func = ObjectiveFunc(image)
+    num_processes = 1
+    num_iterations = 1
+    results = harmony_search(obj_func, num_processes, num_iterations)
+    print('Elapsed time: {}\nBest harmony: {}\nBest fitness: {}\nHarmony memories:'.format(results.elapsed_time, results.best_harmony, results.best_fitness))
 
-p1, p2, p3 = obj_func.solution_vec_to_points(results.best_harmony)
-obj_func.visualize_circle(p1, p2, p3)
+    p1, p2, p3 = obj_func.solution_vec_to_points(results.best_harmony)
+    obj_func.visualize_circle(p1, p2, p3)
