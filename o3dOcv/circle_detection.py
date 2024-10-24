@@ -133,6 +133,9 @@ class ObjectiveFunc(ObjectiveFunctionInterface):
         img[ski.draw.disk((p3[0], p3[1]), 5, shape=img.shape)] = [0, 255, 0]
         return img
     
+    def get_edge_img(self):
+        return self._edge_img
+
 def get_edges(edges_img):
     labeled_image, count = ski.measure.label(edges_img, return_num=True)
 
@@ -164,7 +167,6 @@ for idx, i in enumerate(np.random.randint(1, 1635, size=(n_imgs), dtype=int)):
     plt.subplot(2, n_imgs, idx+n_imgs+1)
     plt.imshow(circle)
     plt.axis('off')
-
 plt.tight_layout(pad=0.1)
 plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
 plt.show()

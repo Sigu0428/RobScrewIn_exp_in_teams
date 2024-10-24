@@ -2,13 +2,15 @@ import rclpy
 from rclpy.node import Node
 from ament_index_python.packages import get_package_prefix
 from tf2_ros import TransformBroadcaster
-import numpy as np
-import cv2 as cv2
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import TransformStamped
 from scipy.spatial.transform import Rotation
 from cv_bridge import CvBridge
-#box dimensions for ros bag playback 90x144x50
+import matplotlib.pyplot as plt
+import skimage as ski
+import numpy as np
+import cv2 as cv
+from skimage.feature import canny
 
 class MinimalSubscriber(Node):
     def __init__(self):
@@ -19,6 +21,8 @@ class MinimalSubscriber(Node):
             '/camera/camera/color/image_raw',
             self.listener_callback,
             1)
+        self.edge_publisher = self.create_publisher(Image, 'camera_edge_images', 10)
+        self.circle_image_publisher = self.create_publisher(Image, 'camera_circle_images', 10)
         self.img_converter = CvBridge()
         self.get_logger().info('Node has finished initialization')
         self.image_count = 0
@@ -50,18 +54,32 @@ class MinimalSubscriber(Node):
     def listener_callback(self, msg):
         self.image_count += 1
         self.get_logger().info(f'I heard an image message {self.image_count}')
-        img = self.img_converter.imgmsg_to_cv2(msg, desired_encoding='bgra8')
-        cv2.imwrite("./images/image" + str(self.image_count) + ".jpg", img)
-        #gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        #img = cv2.cvtColor(gray_img, cv2.COLOR_GRAY2BGR)
-        #gray_img = cv2.medianBlur(gray_img, 9)
-        #circles = cv2.HoughCircles(gray_img, cv2.HOUGH_GRADIENT, 1, 200, param1=50, param2=30, minRadius=0, maxRadius=100)
-        #circles = np.uint(np.around(circles))
-        #for i in circles[0, :]:
-        #    cv2.circle(img, (i[0], i[1]), i[2], (0, 255, 0), 2)
-        #    cv2.circle(img, (i[0], i[1]), 2, (0, 0, 255), 3)
-        #cv2.imshow('image', img)
-        #cv2.waitKey()
+        img = self.img_converter.imgmsg_to_cv2(msg, desired_encoding='rgb8')
+
+        cv.imwrite("temp_image.png", img)
+        img = ski.io.imread("temp_image.png")
+        gray_img = ski.color.rgb2gray(img)
+
+        edges = canny(gray_img, mode='reflect', sigma=3, use_quantiles=True, low_threshold=0.6, high_threshold=0.95)
+        edges = ski.util.img_as_uint(edges)
+        edges = cv.normalize(src=edges, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+        
+        circles = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 200, param1=100, param2=30, minRadius=0, maxRadius=100)
+        
+        if circles is not None:
+            circles = np.uint(np.around(circles))
+            for i in circles[0, :]:
+                cv.circle(img, (i[0], i[1]), i[2], (0, 255, 0), 2)
+                cv.circle(img, (i[0], i[1]), 2, (0, 0, 255), 3)
+        
+        #T = np.array([[1, 0, 0, x], 
+        #              [0, 1, 0, y], 
+        #              [0, 0, 1, 0], 8
+        #              [0, 0, 0, 1]])
+
+        #self.broadcast_tf(T)
+        self.circle_image_publisher.publish(self.img_converter.cv2_to_imgmsg(img, encoding="passthrough"))
+        self.edge_publisher.publish(self.img_converter.cv2_to_imgmsg(edges, encoding="passthrough"))
 
 def main(args=None):
     rclpy.init(args=args)
