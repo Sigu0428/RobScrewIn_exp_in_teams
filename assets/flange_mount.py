@@ -11,11 +11,12 @@ FLANGE_RADIUS = 63 / 2
 FLANGE_RADIUS2 = 50 / 2
 FLANGE_HOLE_RADIUS = 6 / 2
 
-PITCH_INWARD = 45
+PITCH_INWARD = 20
 
-STICK_RADIUS = 3/2
-STICK_CLEARANCE = 0.2
+STICK_RADIUS = 3/2 + 0.05
+STICK_CLEARANCE = 0.15 - 0.05
 STICK_MOUNT_RADIUS = 10
+STICK_MOUNT_HEIGHT = 20
 
 with BuildPart() as mount:
     with BuildSketch():
@@ -35,6 +36,19 @@ with BuildPart() as mount:
     faces = cam_block.faces().filter_by(Axis.Y).sort_by(Axis.Y)[0:2]
     extrude(faces, amount=CAM_LENGTH, mode=Mode.SUBTRACT)
     
-    Cylinder(radius=CENTER_STICK_RADIUS, height=110, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    Cylinder(radius=STICK_MOUNT_RADIUS, height=STICK_MOUNT_HEIGHT+MOUNT_THICKNESS, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    Cylinder(radius=STICK_CLEARANCE+STICK_RADIUS, height=STICK_MOUNT_HEIGHT+MOUNT_THICKNESS, align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
+
+    with Locations(Location((0, 0, MOUNT_THICKNESS + STICK_MOUNT_HEIGHT/2), (0, 90, 0))):
+        Cylinder(2, STICK_MOUNT_RADIUS, mode=Mode.SUBTRACT, align=(Align.CENTER, Align.CENTER, Align.MAX))
+    
+    new_extrude = extrude(mount.faces().filter_by(Axis.Y).sort_by(Axis.Y)[1], amount=-MOUNT_THICKNESS)
+    extrude(new_extrude.faces().sort_by(Axis.Z)[0], amount=MOUNT_THICKNESS)
+
+with BuildPart() as stick:
+    Cylinder(radius=STICK_RADIUS, height=110, align=(Align.CENTER, Align.CENTER, Align.MIN))
 
 show_all()
+
+export_stl(mount.part, "mount.stl")
+export_stl(stick.part, "stick.stl")
