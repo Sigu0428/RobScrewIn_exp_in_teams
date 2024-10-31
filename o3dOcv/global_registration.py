@@ -132,6 +132,7 @@ class MinimalSubscriber(Node):
         # typical cad files are given in mm, so we need to convert to meters which is what the realsense uses
         obj_mesh.scale(1/1000, center=obj_mesh.get_center())
         self.object_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
+        #o3d.visualization.draw_geometries([self.object_pcd])
 
         # Demean the pointcloud to place it at the origin, i.e. center of the camera frame
         mean, cov = self.object_pcd.compute_mean_and_covariance()

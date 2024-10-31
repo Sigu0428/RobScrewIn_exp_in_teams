@@ -56,6 +56,13 @@ class MinimalSubscriber(Node):
         self.get_logger().info(f'I heard an image message {self.image_count}')
         img = self.img_converter.imgmsg_to_cv2(msg, desired_encoding='rgb8')
 
+        try:
+            h = np.load('/'.join(get_package_prefix('o3dOcv').split('/')[:-2]) + '/homography_calibration.npy')
+        except:
+            self.get_logger().error("calibration file not found: run the python script calibration.py before running this node")
+            exit()
+        img = cv.warpPerspective(img, h, (90*4, 144*4))
+
         cv.imwrite("temp_image.png", img)
         img = ski.io.imread("temp_image.png")
         gray_img = ski.color.rgb2gray(img)
@@ -71,13 +78,7 @@ class MinimalSubscriber(Node):
             for i in circles[0, :]:
                 cv.circle(img, (i[0], i[1]), i[2], (0, 255, 0), 2)
                 cv.circle(img, (i[0], i[1]), 2, (0, 0, 255), 3)
-        
-        #T = np.array([[1, 0, 0, x], 
-        #              [0, 1, 0, y], 
-        #              [0, 0, 1, 0], 8
-        #              [0, 0, 0, 1]])
 
-        #self.broadcast_tf(T)
         self.circle_image_publisher.publish(self.img_converter.cv2_to_imgmsg(img, encoding="passthrough"))
         self.edge_publisher.publish(self.img_converter.cv2_to_imgmsg(edges, encoding="passthrough"))
 

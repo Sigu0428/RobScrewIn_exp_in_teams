@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'global_registration = o3dOcv.global_registration:main',
-            'alignment = o3dOcv.alignment:main'
+            'alignment = o3dOcv.alignment:main',
+            'calibration = o3dOcv.alignment:main',
         ],
     },
 )
