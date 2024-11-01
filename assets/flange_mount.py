@@ -13,9 +13,9 @@ FLANGE_HOLE_RADIUS = 6 / 2
 
 PITCH_INWARD = 20 + 10
 
-STICK_RADIUS = 3/2 + 0.05
+STICK_RADIUS = 3/2
 STICK_HEIGHT = 110
-STICK_CLEARANCE = 0.15 - 0.05
+STICK_CLEARANCE = 0.15
 STICK_MOUNT_RADIUS = 10
 STICK_MOUNT_HEIGHT = 20
 
@@ -34,6 +34,7 @@ with BuildPart() as mount:
             Cylinder(CAM_HOLE_RADIUS, MOUNT_THICKNESS, mode=Mode.SUBTRACT)
         Box(length=CAM_HOLE_DIST, width=CAM_HOLE_RADIUS*2, height=MOUNT_THICKNESS, mode=Mode.SUBTRACT)
         box_faces = box.faces().sort_by(Axis.Z)[0]
+        #chamfer(box.edges().sort_by(Axis.Y)[:-1], MOUNT_THICKNESS*0.25)
     cam_block = extrude(box_faces, dir=(0, 0, -1), until=Until.LAST, target=flat)
     faces = cam_block.faces().filter_by(Axis.Y).sort_by(Axis.Y)[0:2]
     extrude(faces, amount=CAM_LENGTH, mode=Mode.SUBTRACT)
@@ -47,11 +48,18 @@ with BuildPart() as mount:
     new_extrude = extrude(mount.faces().filter_by(Axis.Y).sort_by(Axis.Y)[1], amount=-MOUNT_THICKNESS)
     extrude(new_extrude.faces().sort_by(Axis.Z)[0], amount=MOUNT_THICKNESS)
 
+    edges = mount.faces().filter_by(Axis.X).edges().sort_by(Axis.Y)[0:10]
+    edges.append(mount.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[-2:].sort_by(SortBy.LENGTH)[0])
+    edges.append(mount.faces().filter_by(Axis.Z).sort_by(Axis.Z)[1].edges())
+    edges.append(mount.edges().filter_by(Axis.X).sort_by(Axis.Y)[0:2])
+    chamfer(edges, MOUNT_THICKNESS*0.25)
+    
 with BuildPart() as stick:
     Cylinder(radius=STICK_RADIUS, height=STICK_HEIGHT, align=(Align.CENTER, Align.CENTER, Align.MIN))
     with Locations(Location((0, 0, STICK_MOUNT_HEIGHT+MOUNT_THICKNESS), (0, 0, 0))):
         Cylinder(STICK_MOUNT_RADIUS, MOUNT_THICKNESS, align=(Align.CENTER, Align.CENTER, Align.MIN))
     chamfer(stick.faces().sort_by(Axis.Z)[-3].edges().sort_by(SortBy.LENGTH)[0], STICK_MOUNT_RADIUS/2)
+    chamfer(stick.faces().sort_by(Axis.Z)[2].edges().sort_by(SortBy.LENGTH)[0], MOUNT_THICKNESS*0.25)
 
 with BuildPart() as calibration_stick:
     Cylinder(radius=STICK_RADIUS, height=STICK_HEIGHT, align=(Align.CENTER, Align.CENTER, Align.MIN))
@@ -66,9 +74,11 @@ with BuildPart() as calibration_stick:
     with Locations(Location((0, 0, STICK_HEIGHT), (0, 0, 0))):
         Box(length=50, width=50, height=MOUNT_THICKNESS, align=(Align.CENTER, Align.CENTER, Align.MIN))
     chamfer(calibration_stick.faces().sort_by(Axis.Z)[-1].edges(), MOUNT_THICKNESS*0.95)
+    chamfer(calibration_stick.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[-1], MOUNT_THICKNESS*0.95)
+    chamfer(calibration_stick.faces().sort_by(Axis.Z)[2].edges().sort_by(SortBy.LENGTH)[0], MOUNT_THICKNESS*0.25)
 
 show_all()
 
 export_stl(mount.part, "mount.stl")
 export_stl(stick.part, "stick.stl")
-export_stl(calibration_stick, "calibration_stick.stl")
+export_stl(calibration_stick.part, "calibration_stick.stl")
