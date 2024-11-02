@@ -11,6 +11,34 @@ import skimage as ski
 import numpy as np
 import cv2 as cv
 from skimage.feature import canny
+PATH_TO_NODE = '/'.join(get_package_prefix('o3dOcv').split('/')[:-2])
+
+from rcl_interfaces.msg import SetParametersResult
+
+class Param():
+    canny_blur_kernel_size = 3
+    canny_blur_kernel_size = 3
+    canny_threshold_low = 0.6
+    canny_theshold_high = 0.95
+    hough_accumulator_threshold = 30
+    hough_accumulator_to_img_resolution = 1.0
+    hough_min_dist_between_circles = 200
+    hough_min_circle_size = 0
+    hough_max_circle_size = 100
+    hough_canny_threshold = 100
+    
+    @staticmethod
+    def declare(node):
+        class_variables = [(key, getattr(Param, key)) for key in set(vars(Param)) - set(['declare', 'on_params_changed', '__module__', '__dict__', '__init__', '__weakref__', '__doc__'])]
+        node.declare_parameters(namespace='', parameters=class_variables)
+        setattr(node, 'on_params_changed', Param.on_params_changed)
+        node.add_on_set_parameters_callback(node.on_params_changed)
+    
+    @staticmethod
+    def on_params_changed(params):
+        for param in params:
+            setattr(Param, param.name, param.value)
+        return SetParametersResult(successful=True, reason='Parameter set')
 
 class MinimalSubscriber(Node):
     def __init__(self):
@@ -24,40 +52,17 @@ class MinimalSubscriber(Node):
         self.edge_publisher = self.create_publisher(Image, 'camera_edge_images', 10)
         self.circle_image_publisher = self.create_publisher(Image, 'camera_circle_images', 10)
         self.img_converter = CvBridge()
-        self.get_logger().info('Node has finished initialization')
         self.image_count = 0
+        Param.declare(self)
+        self.get_logger().info('Node has finished initialization')
 
-    def broadcast_tf(self, T):
-        t = TransformStamped()
-
-        # header
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'camera_depth_optical_frame'
-        t.child_frame_id = 'skrew_position_estimate'
-
-        # translation
-        t.transform.translation.x = T[0, 3]
-        t.transform.translation.y = T[1, 3]
-        t.transform.translation.z = T[2, 3]
-
-        # rotation
-        rot = Rotation.from_matrix(T[0:3, 0:3])
-        q = rot.as_quat()
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
-        self.tf_broadcaster.sendTransform(t)
-
-    # Potential bug, the same object is getting transformed each iteration
     def listener_callback(self, msg):
         self.image_count += 1
         self.get_logger().info(f'I heard an image message {self.image_count}')
         img = self.img_converter.imgmsg_to_cv2(msg, desired_encoding='rgb8')
 
         try:
-            h = np.load('/'.join(get_package_prefix('o3dOcv').split('/')[:-2]) + '/homography_calibration.npy')
+            h = np.load(PATH_TO_NODE + '/homography_calibration.npy')
         except:
             self.get_logger().error("calibration file not found: run the python script calibration.py before running this node")
             exit()
@@ -67,12 +72,26 @@ class MinimalSubscriber(Node):
         img = ski.io.imread("temp_image.png")
         gray_img = ski.color.rgb2gray(img)
 
-        edges = canny(gray_img, mode='reflect', sigma=3, use_quantiles=True, low_threshold=0.6, high_threshold=0.95)
+        edges = canny(gray_img, mode='reflect', 
+                      sigma=Param.canny_blur_kernel_size, 
+                      use_quantiles=True, 
+                      low_threshold=Param.canny_threshold_low, 
+                      high_threshold=Param.canny_theshold_high
+                      )
         edges = ski.util.img_as_uint(edges)
         edges = cv.normalize(src=edges, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
         
-        circles = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 200, param1=100, param2=30, minRadius=0, maxRadius=100)
-        
+        circles = cv.HoughCircles(
+            edges, 
+            cv.HOUGH_GRADIENT, 
+            Param.hough_accumulator_to_img_resolution, 
+            Param.hough_min_dist_between_circles, 
+            Param.hough_canny_threshold, 
+            Param.hough_accumulator_threshold, 
+            Param.hough_min_circle_size, 
+            Param.hough_max_circle_size
+            )
+
         if circles is not None:
             circles = np.uint(np.around(circles))
             for i in circles[0, :]:
